@@ -1,517 +1,604 @@
 <?php
+
 /**
- * Kunena Component
+ * @package     Joomla.Administrator
+ * @subpackage  com_categories
  *
- * @package         Kunena.Administrator
- * @subpackage      Models
- *
- * @copyright       Copyright (C) 2008 - 2022 Kunena Team. All rights reserved.
- * @license         https://www.gnu.org/copyleft/gpl.html GNU/GPL
- * @link            https://www.kunena.org
- **/
+ * @copyright   (C) 2008 Open Source Matters, Inc. <https://www.joomla.org>
+ * @license     GNU General Public License version 2 or later; see LICENSE.txt
+ */
 
 namespace Kunena\Forum\Administrator\Model;
 
-\defined('_JEXEC') or die();
-
-use Exception;
-use Joomla\CMS\Component\ComponentHelper;
+use Joomla\CMS\Association\AssociationServiceInterface;
+use Joomla\CMS\Categories\CategoryServiceInterface;
 use Joomla\CMS\Factory;
-use Joomla\CMS\Filesystem\Folder;
-use Joomla\CMS\HTML\HTMLHelper;
+use Joomla\CMS\Language\Associations;
 use Joomla\CMS\Language\Text;
-use Joomla\CMS\Pagination\Pagination;
-use Joomla\CMS\Table\Table;
-use Joomla\Registry\Registry;
+use Joomla\CMS\MVC\Factory\MVCFactoryInterface;
+use Joomla\CMS\MVC\Model\ListModel;
+use Joomla\Database\DatabaseQuery;
+use Joomla\Database\ParameterType;
+use Joomla\Utilities\ArrayHelper;
 use Kunena\Forum\Libraries\Access\KunenaAccess;
 use Kunena\Forum\Libraries\Factory\KunenaFactory;
-use Kunena\Forum\Libraries\Forum\Category\KunenaCategory;
 use Kunena\Forum\Libraries\Forum\Category\KunenaCategoryHelper;
-use Kunena\Forum\Libraries\Model\KunenaModel;
-use Kunena\Forum\Libraries\Template\KunenaTemplate;
-use RuntimeException;
+use Kunena\Forum\Libraries\User\KunenaUserHelper;
 
 /**
- * Categories Model for Kunena
+ * Categories Component Categories Model
  *
- * @since 2.0
+ * @since  1.6
  */
-class CategoriesModel extends KunenaModel
+class CategoriesModel extends ListModel
 {
-	/**
-	 * @var     string
-	 * @since   Kunena 6.0
-	 */
-	public $context;
-
-	/**
-	 * @var     KunenaCategory[]
-	 * @since   Kunena 6.0
-	 */
-	protected $internalAdminCategories = false;
-
-	/**
-	 * @var     KunenaCategory
-	 * @since   Kunena 6.0
-	 */
-	protected $internalAdminCategory = false;
-
-	/**
-	 * @return  Pagination
-	 * @since   Kunena 6.0
-	 */
-	public function getAdminNavigation(): Pagination
-	{
-		return new Pagination($this->getState('list.total'), $this->getState('list.start'), $this->getState('list.limit'));
-	}
-
-	/**
-	 * @return  array|boolean
-	 *
-	 * @throws  Exception
-	 * @since   Kunena 6.0
-	 */
-	public function getAdminOptions()
-	{
-		$category = $this->getAdminCategory();
-
-		if (!$category)
-		{
-			return false;
-		}
-
-		$category->params = new Registry($category->params);
-
-		// Make a standard yes/no list
-		$published    = [];
-		$published [] = HTMLHelper::_('select.option', 1, Text::_('COM_KUNENA_PUBLISHED'));
-		$published [] = HTMLHelper::_('select.option', 0, Text::_('COM_KUNENA_UNPUBLISHED'));
-
-		// Make a standard yes/no list
-		$yesno    = [];
-		$yesno [] = HTMLHelper::_('select.option', 0, Text::_('COM_KUNENA_NO'));
-		$yesno [] = HTMLHelper::_('select.option', 1, Text::_('COM_KUNENA_YES'));
-
-		// Anonymous posts default
-		$postAnonymous    = [];
-		$postAnonymous [] = HTMLHelper::_('select.option', '0', Text::_('COM_KUNENA_CATEGORY_ANONYMOUS_X_REG'));
-		$postAnonymous [] = HTMLHelper::_('select.option', '1', Text::_('COM_KUNENA_CATEGORY_ANONYMOUS_X_ANO'));
-
-		$catParams                = [];
-		$catParams['ordering']    = 'ordering';
-		$catParams['toplevel']    = Text::_('COM_KUNENA_TOPLEVEL');
-		$catParams['sections']    = 1;
-		$catParams['unpublished'] = 1;
-		$catParams['catid']       = $category->id;
-		$catParams['action']      = 'admin';
-
-		$channelsParams           = [];
-		$channelsParams['catid']  = $category->id;
-		$channelsParams['action'] = 'admin';
-
-		$channelsOptions    = [];
-		$channelsOptions [] = HTMLHelper::_('select.option', 'THIS', Text::_('COM_KUNENA_CATEGORY_CHANNELS_OPTION_THIS'));
-		$channelsOptions [] = HTMLHelper::_('select.option', 'CHILDREN', Text::_('COM_KUNENA_CATEGORY_CHANNELS_OPTION_CHILDREN'));
-
-		if (empty($category->channels))
-		{
-			$category->channels = 'THIS';
-		}
-
-		$topicOrderingOptions   = [];
-		$topicOrderingOptions[] = HTMLHelper::_('select.option', 'lastpost', Text::_('COM_KUNENA_CATEGORY_TOPIC_ORDERING_OPTION_LASTPOST'));
-		$topicOrderingOptions[] = HTMLHelper::_('select.option', 'creation', Text::_('COM_KUNENA_CATEGORY_TOPIC_ORDERING_OPTION_CREATION'));
-		$topicOrderingOptions[] = HTMLHelper::_('select.option', 'alpha', Text::_('COM_KUNENA_CATEGORY_TOPIC_ORDERING_OPTION_ALPHA'));
-		$topicOrderingOptions[] = HTMLHelper::_('select.option', 'views', Text::_('COM_KUNENA_CATEGORY_TOPIC_ORDERING_OPTION_VIEWS'));
-		$topicOrderingOptions[] = HTMLHelper::_('select.option', 'posts', Text::_('COM_KUNENA_CATEGORY_TOPIC_ORDERING_OPTION_POSTS'));
-
-		$aliases = array_keys($category->getAliases());
-
-		$lists                    = [];
-		$lists ['accesstypes']    = KunenaAccess::getInstance()->getAccessTypesList($category);
-		$lists ['accesslists']    = KunenaAccess::getInstance()->getAccessOptions($category);
-		$lists ['categories']     = HTMLHelper::_('kunenaforum.categorylist', 'parentid', 0, null, $catParams, 'class="inputbox form-control"', 'value', 'text', $category->parentid);
-		$lists ['channels']       = HTMLHelper::_('kunenaforum.categorylist', 'channels[]', 0, $channelsOptions, $channelsParams, 'class="inputbox form-control" multiple="multiple"', 'value', 'text', explode(',', $category->channels));
-		$lists ['aliases']        = $aliases ? HTMLHelper::_('kunenaforum.checklist', 'aliases', $aliases, true, 'category_aliases') : null;
-		$lists ['published']      = HTMLHelper::_('select.genericlist', $published, 'published', 'class="inputbox form-control"', 'value', 'text', $category->published);
-		$lists ['forumLocked']    = HTMLHelper::_('select.genericlist', $yesno, 'locked', 'class="inputbox form-control" size="1"', 'value', 'text', $category->locked);
-		$lists ['forumReview']    = HTMLHelper::_('select.genericlist', $yesno, 'review', 'class="inputbox form-control" size="1"', 'value', 'text', $category->review);
-		$lists ['allowPolls']     = HTMLHelper::_('select.genericlist', $yesno, 'allowPolls', 'class="inputbox form-control" size="1"', 'value', 'text', $category->allowPolls);
-		$lists ['allowAnonymous'] = HTMLHelper::_('select.genericlist', $yesno, 'allowAnonymous', 'class="inputbox form-control" size="1"', 'value', 'text', $category->allowAnonymous);
-		$lists ['postAnonymous']  = HTMLHelper::_('select.genericlist', $postAnonymous, 'postAnonymous', 'class="inputbox form-control" size="1"', 'value', 'text', $category->postAnonymous);
-		$lists ['topicOrdering']  = HTMLHelper::_('select.genericlist', $topicOrderingOptions, 'topicOrdering', 'class="inputbox form-control" size="1"', 'value', 'text', $category->topicOrdering);
-		$lists ['allowRatings']   = HTMLHelper::_('select.genericlist', $yesno, 'allowRatings', 'class="inputbox form-control" size="1"', 'value', 'text', $category->allowRatings);
-
-		$options                 = [];
-		$options[0]              = HTMLHelper::_('select.option', '0', Text::_('COM_KUNENA_A_CATEGORY_CFG_OPTION_NEVER'));
-		$options[1]              = HTMLHelper::_('select.option', '1', Text::_('COM_KUNENA_A_CATEGORY_CFG_OPTION_SECTION'));
-		$options[2]              = HTMLHelper::_('select.option', '2', Text::_('COM_KUNENA_A_CATEGORY_CFG_OPTION_CATEGORY'));
-		$options[3]              = HTMLHelper::_('select.option', '3', Text::_('COM_KUNENA_A_CATEGORY_CFG_OPTION_SUBCATEGORY'));
-		$lists['display_parent'] = HTMLHelper::_('select.genericlist', $options, 'params[display][index][parent]', 'class="inputbox form-control" size="1"', 'value', 'text', $category->params->get('display.index.parent', '3'));
-
-		unset($options[1]);
-
-		$lists['display_children'] = HTMLHelper::_('select.genericlist', $options, 'params[display][index][children]', 'class="inputbox form-control" size="1"', 'value', 'text', $category->params->get('display.index.children', '3'));
-
-		$topicIcons     = [];
-		$topicIconslist = Folder::folders(JPATH_ROOT . '/media/kunena/topic_icons');
-
-		foreach ($topicIconslist as $icon)
-		{
-			$topicIcons[] = HTMLHelper::_('select.option', $icon, $icon);
-		}
-
-		if (empty($category->iconset))
-		{
-			$value = KunenaTemplate::getInstance()->params->get('DefaultIconset');
-		}
-		else
-		{
-			$value = $category->iconset;
-		}
-
-		$lists ['categoryIconset'] = HTMLHelper::_('select.genericlist', $topicIcons, 'iconset', 'class="inputbox form-control" size="1"', 'value', 'text', $value);
-
-		return $lists;
-	}
-
-	/**
-	 * @return  boolean|KunenaCategory|void
-	 *
-	 * @throws  Exception
-	 * @since   Kunena 6.0
-	 */
-	public function getAdminCategory()
-	{
-		$category = KunenaCategoryHelper::get($this->getState('item.id'));
-
-		if (!$this->me->isAdmin($category))
-		{
-			return false;
-		}
-
-		if ($this->internalAdminCategory === false)
-		{
-			if ($category->exists())
-			{
-				if (!$category->isCheckedOut($this->me->userid))
-				{
-					$category->checkout($this->me->userid);
-				}
-			}
-			else
-			{
-				// New category is by default child of the first section -- this will help new users to do it right
-				$db = $this->getDatabase();
-
-				$query = $db->getQuery(true)
-					->select('a.id, a.name')
-					->from("{$db->quoteName('#__kunena_categories')} AS a")
-					->where("parentid={$db->quote('0')}")
-					->where("id!={$db->quote($category->id)}")
-					->order('ordering');
-
-				$db->setQuery($query);
-
-				try
-				{
-					$sections = $db->loadObjectList();
-				}
-				catch (RuntimeException $e)
-				{
-					Factory::getApplication()->enqueueMessage($e->getMessage(), 'error');
-
-					return;
-				}
-
-				$category->parentid     = $this->getState('item.parent_id');
-				$category->published    = 0;
-				$category->ordering     = 9999;
-				$category->pubRecurse   = 1;
-				$category->adminRecurse = 1;
-				$category->accesstype   = 'joomla.level';
-				$category->access       = 1;
-				$category->pubAccess    = 1;
-				$category->adminAccess  = 8;
-			}
-
-			$this->internalAdminCategory = $category;
-		}
-
-		return $this->internalAdminCategory;
-	}
-
-	/**
-	 * @return  array|boolean
-	 *
-	 * @throws  Exception
-	 * @since   Kunena 6.0
-	 */
-	public function getAdminModerators()
-	{
-		$category = $this->getAdminCategory();
-
-		if (!$category)
-		{
-			return false;
-		}
-
-		return $category->getModerators(false);
-	}
-
-	/**
-	 * @param   null  $pks    pks
-	 * @param   null  $order  order
-	 *
-	 * @return  boolean
-	 *
-	 * @throws  Exception
-	 * @since   Kunena 6.0
-	 */
-	public function saveOrder($pks = null, $order = null): bool
-	{
-		$table      = Table::getInstance('KunenaCategories', 'Table');
-		$conditions = [];
-
-		if (empty($pks))
-		{
-			return false;
-		}
-
-		// Update ordering values
-		foreach ($pks as $i => $pk)
-		{
-			$table->load((int) $pk);
-
-			if ($table->ordering != $order[$i])
-			{
-				$table->ordering = $order[$i];
-
-				try
-				{
-					$table->store();
-				}
-				catch (Exception $e)
-				{
-					Factory::getApplication()->enqueueMessage($e->getMessage(), 'error');
-				}
-
-				// Remember to reOrder within position and client_id
-				$condition = $this->getReorderConditions($table);
-				$found     = false;
-
-				foreach ($conditions as $cond)
-				{
-					if ($cond[1] == $condition)
-					{
-						$found = true;
-						break;
-					}
-				}
-
-				if (!$found)
-				{
-					$key          = $table->getKeyName();
-					$conditions[] = [$table->$key, $condition];
-				}
-			}
-		}
-
-		// Execute reOrder for each category.
-		foreach ($conditions as $cond)
-		{
-			$table->load($cond[0]);
-			$table->reOrder($cond[1]);
-		}
-
-		// Clear the component's cache
-		$this->cleanCache();
-
-		return true;
-	}
-
-	/**
-	 * @param   \Joomla\CMS\Table\Table  $table  table
-	 *
-	 * @return  array
-	 *
-	 * @since   Kunena 6.0
-	 */
-	protected function getReorderConditions(Table $table): array
-	{
-		$condition   = [];
-		$condition[] = 'parentid = ' . (int) $table->parentid;
-
-		return $condition;
-	}
-
-	/**
-	 * Get list of categories to be displayed in drop-down select in batch
-	 *
-	 * @return  array
-	 *
-	 * @throws  null
-	 * @throws  Exception
-	 * @since   Kunena 5.1
-	 */
-	public function getBatchCategories(): array
-	{
-		$categories        = $this->getAdminCategories();
-		$batchCategories   = [];
-		$batchCategories[] = HTMLHelper::_('select.option', 'select', Text::_('JSELECT'));
-
-		foreach ($categories as $category)
-		{
-			$batchCategories [] = HTMLHelper::_(
-				'select.option',
-				$category->id,
-				str_repeat('...', \count($category->indent) - 1) . ' ' . $category->name
-			);
-		}
-
-		return $batchCategories;
-	}
-
-	/**
-	 * @return  array|KunenaCategory[]
-	 *
-	 * @throws  Exception
-	 * @throws  null
-	 * @since   Kunena 6.0
-	 */
-	public function getAdminCategories()
-	{
-		if ($this->internalAdminCategories === false)
-		{
-			$params = [
-				'ordering'         => $this->getState('list.ordering'),
-				'direction'        => $this->getState('list.direction') == 'asc' ? 1 : -1,
-				'search'           => $this->getState('filter.search'),
-				'unpublished'      => 1,
-				'published'        => $this->getState('filter.published'),
-				'filterTitle'      => $this->getState('filter.title'),
-				'filterType'       => $this->getState('filter.type'),
-				'filterAccess'     => $this->getState('filter.access'),
-				'filterLocked'     => $this->getState('filter.locked'),
-				'filterAllowPolls' => $this->getState('filter.allowPolls'),
-				'filterReview'     => $this->getState('filter.review'),
-				'filterAnonymous'  => $this->getState('filter.anonymous'),
-				'action'           => 'none',
-			];
-
-			$catid      = $this->getState('item.id', 0);
-			$categories = [];
-			$orphans    = [];
-
-			if ($catid)
-			{
-				$categories   = KunenaCategoryHelper::getParents($catid, $this->getState('filter.levels') - 1, ['unpublished' => 1, 'action' => 'none']);
-				$categories[] = KunenaCategoryHelper::get($catid);
-			}
-			else
-			{
-				$orphans = KunenaCategoryHelper::getOrphaned($this->getState('filter.levels') - 1, $params);
-			}
-
-			$categories = array_merge($categories, KunenaCategoryHelper::getChildren($catid, $this->getState('filter.levels') - 1, $params));
-			$categories = array_merge($orphans, $categories);
-
-			$categories = KunenaCategoryHelper::getIndentation($categories);
-			$this->setState('list.total', \count($categories));
-
-			if ($this->getState('list.limit'))
-			{
-				$this->internalAdminCategories = \array_slice($categories, $this->getState('list.start'), $this->getState('list.limit'));
-			}
-			else
-			{
-				$this->internalAdminCategories = $categories;
-			}
-
-			$admin = 0;
-			$acl   = KunenaAccess::getInstance();
-
-			foreach ($this->internalAdminCategories as $category)
-			{
-				// TODO: Following is needed for J!2.5 only:
-				$parent   = $category->getParent();
-				$siblings = array_keys(KunenaCategoryHelper::getCategoryTree($category->parentid));
-
-				if ($parent)
-				{
-					$category->up      = $this->me->isAdmin($parent) && reset($siblings) != $category->id;
-					$category->down    = $this->me->isAdmin($parent) && end($siblings) != $category->id;
-					$category->reOrder = $this->me->isAdmin($parent);
-				}
-				else
-				{
-					$category->up      = $this->me->isAdmin($category) && reset($siblings) != $category->id;
-					$category->down    = $this->me->isAdmin($category) && end($siblings) != $category->id;
-					$category->reOrder = $this->me->isAdmin($category);
-				}
-
-				// Get ACL groups for the category.
-				$access               = $acl->getCategoryAccess($category);
-				$category->accessname = [];
-
-				foreach ($access as $item)
-				{
-					if (!empty($item['admin.link']))
-					{
-						$category->accessname[] = '<a href="' . htmlentities($item['admin.link'], ENT_COMPAT, 'utf-8') . '">' . htmlentities($item['title'], ENT_COMPAT, 'utf-8') . '</a>';
-					}
-					else
-					{
-						$category->accessname[] = htmlentities($item['title'], ENT_COMPAT, 'utf-8');
-					}
-				}
-
-				$category->accessname = implode(' / ', $category->accessname);
-
-				// Checkout?
-				if ($this->me->isAdmin($category) && $category->isCheckedOut(0))
-				{
-					$category->editor = KunenaFactory::getUser($category->checked_out)->getName();
-				}
-				else
-				{
-					$category->checked_out = 0;
-					$category->editor      = '';
-				}
-
-				$admin += $this->me->isAdmin($category);
-			}
-
-			$this->setState('list.count.admin', $admin);
-		}
-
-		if (!empty($orphans))
-		{
-			$this->app->enqueueMessage(Text::_('COM_KUNENA_CATEGORY_ORPHAN_DESC'), 'notice');
-		}
-
-		return $this->internalAdminCategories;
-	}
-
-	/**
-	 * Method to auto-populate the model state.
-	 *
-	 * Note. Calling getState in this method will result in recursion.
-	 *
-	 * @param   string  $ordering   ordering
-	 * @param   string  $direction  direction
-	 *
-	 * @return  void
-	 *
-	 * @since   Kunena 6.0
-	 */
-	protected function populateState($ordering = 'a.lft', $direction = 'asc')
-	{
-		// Load the parameters.
-		$params = ComponentHelper::getParams('com_kunena');
-		$this->setState('params', $params);
-
-		// List state information.
-		parent::populateState($ordering, $direction);
-	}
+    /**
+     * Does an association exist? Caches the result of getAssoc().
+     *
+     * @var   boolean|null
+     * @since 4.0.5
+     */
+    private $hasAssociation;
+    
+    /**
+     * @var     KunenaCategory[]
+     * @since   Kunena 6.0
+     */
+    protected $internalAdminCategories = false;
+    
+    /**
+     * @var     KunenaUser
+     * @since   Kunena 6.0
+     */
+    public $me = null;
+    
+    /**
+     * Constructor.
+     *
+     * @param   array                     $config   An optional associative array of configuration settings.
+     * @param   MVCFactoryInterface|null  $factory  The factory.
+     *
+     * @since   1.6
+     */
+    public function __construct($config = array(), MVCFactoryInterface $factory = null)
+    {
+        if (empty($config['filter_fields'])) {
+            $config['filter_fields'] = array(
+                'id', 'a.id',
+                'title', 'a.title',
+                'alias', 'a.alias',
+                'published', 'a.published',
+                'access', 'a.access', 'access_level',
+                'language', 'a.language', 'language_title',
+                'checked_out', 'a.checked_out',
+                'checked_out_time', 'a.checked_out_time',
+                'created_time', 'a.created_time',
+                'created_user_id', 'a.created_user_id',
+                'lft', 'a.lft',
+                'rgt', 'a.rgt',
+                'level', 'a.level',
+                'path', 'a.path',
+                'tag',
+            );
+        }
+        
+        if (Associations::isEnabled()) {
+            $config['filter_fields'][] = 'association';
+        }
+        
+        $this->me     = KunenaUserHelper::getMyself();
+        
+        parent::__construct($config, $factory);
+    }
+    
+    /**
+     * Method to auto-populate the model state.
+     *
+     * Note. Calling getState in this method will result in recursion.
+     *
+     * @param   string  $ordering   An optional ordering field.
+     * @param   string  $direction  An optional direction (asc|desc).
+     *
+     * @return  void
+     *
+     * @since   1.6
+     */
+    protected function populateState($ordering = 'a.lft', $direction = 'asc')
+    {
+        $app = Factory::getApplication();
+        
+        $forcedLanguage = $app->input->get('forcedLanguage', '', 'cmd');
+        
+        // Adjust the context to support modal layouts.
+        if ($layout = $app->input->get('layout')) {
+            $this->context .= '.' . $layout;
+        }
+        
+        // Adjust the context to support forced languages.
+        if ($forcedLanguage) {
+            $this->context .= '.' . $forcedLanguage;
+        }
+        
+        $extension = $app->getUserStateFromRequest($this->context . '.filter.extension', 'extension', 'com_content', 'cmd');
+        
+        $this->setState('filter.extension', $extension);
+        $parts = explode('.', $extension);
+        
+        // Extract the component name
+        $this->setState('filter.component', $parts[0]);
+        
+        // Extract the optional section name
+        $this->setState('filter.section', (\count($parts) > 1) ? $parts[1] : null);
+        
+        // List state information.
+        parent::populateState($ordering, $direction);
+        
+        // Force a language.
+        if (!empty($forcedLanguage)) {
+            $this->setState('filter.language', $forcedLanguage);
+        }
+    }
+    
+    /**
+     * Method to get a store id based on model configuration state.
+     *
+     * This is necessary because the model is used by the component and
+     * different modules that might need different sets of data or different
+     * ordering requirements.
+     *
+     * @param   string  $id  A prefix for the store id.
+     *
+     * @return  string  A store id.
+     *
+     * @since   1.6
+     */
+    protected function getStoreId($id = '')
+    {
+        // Compile the store id.
+        $id .= ':' . $this->getState('filter.extension');
+        $id .= ':' . $this->getState('filter.search');
+        $id .= ':' . $this->getState('filter.published');
+        $id .= ':' . $this->getState('filter.access');
+        $id .= ':' . $this->getState('filter.language');
+        $id .= ':' . $this->getState('filter.level');
+        $id .= ':' . serialize($this->getState('filter.tag'));
+        
+        return parent::getStoreId($id);
+    }
+    
+    /**
+     * Method to get a database query to list categories.
+     *
+     * @return  \Joomla\Database\DatabaseQuery
+     *
+     * @since   1.6
+     */
+    protected function getListQuery()
+    {
+        // Create a new query object.
+        $db = $this->getDatabase();
+        $query = $db->getQuery(true);
+        $user = Factory::getUser();
+        
+        // Select the required fields from the table.
+        $query->select(
+            $this->getState(
+                'list.select',
+                'a.id, a.title, a.alias, a.note, a.published, a.access' .
+                ', a.checked_out, a.checked_out_time, a.created_user_id' .
+                ', a.path, a.parent_id, a.level, a.lft, a.rgt' .
+                ', a.language'
+                )
+            );
+        $query->from($db->quoteName('#__categories', 'a'));
+        
+        // Join over the language
+        $query->select(
+            [
+                $db->quoteName('l.title', 'language_title'),
+                $db->quoteName('l.image', 'language_image'),
+            ]
+            )
+            ->join(
+                'LEFT',
+                $db->quoteName('#__languages', 'l'),
+                $db->quoteName('l.lang_code') . ' = ' . $db->quoteName('a.language')
+                );
+            
+            // Join over the users for the checked out user.
+            $query->select($db->quoteName('uc.name', 'editor'))
+            ->join(
+                'LEFT',
+                $db->quoteName('#__users', 'uc'),
+                $db->quoteName('uc.id') . ' = ' . $db->quoteName('a.checked_out')
+                );
+            
+            // Join over the asset groups.
+            $query->select($db->quoteName('ag.title', 'access_level'))
+            ->join(
+                'LEFT',
+                $db->quoteName('#__viewlevels', 'ag'),
+                $db->quoteName('ag.id') . ' = ' . $db->quoteName('a.access')
+                );
+            
+            // Join over the users for the author.
+            $query->select($db->quoteName('ua.name', 'author_name'))
+            ->join(
+                'LEFT',
+                $db->quoteName('#__users', 'ua'),
+                $db->quoteName('ua.id') . ' = ' . $db->quoteName('a.created_user_id')
+                );
+            
+            // Join over the associations.
+            $assoc = $this->getAssoc();
+            
+            if ($assoc) {
+                $query->select('COUNT(asso2.id)>1 as association')
+                ->join(
+                    'LEFT',
+                    $db->quoteName('#__associations', 'asso'),
+                    $db->quoteName('asso.id') . ' = ' . $db->quoteName('a.id')
+                    . ' AND ' . $db->quoteName('asso.context') . ' = ' . $db->quote('com_categories.item')
+                    )
+                    ->join(
+                        'LEFT',
+                        $db->quoteName('#__associations', 'asso2'),
+                        $db->quoteName('asso2.key') . ' = ' . $db->quoteName('asso.key')
+                        )
+                        ->group('a.id, l.title, uc.name, ag.title, ua.name');
+            }
+            
+            // Filter by extension
+            if ($extension = $this->getState('filter.extension')) {
+                $query->where($db->quoteName('a.extension') . ' = :extension')
+                ->bind(':extension', $extension);
+            }
+            
+            // Filter on the level.
+            if ($level = (int) $this->getState('filter.level')) {
+                $query->where($db->quoteName('a.level') . ' <= :level')
+                ->bind(':level', $level, ParameterType::INTEGER);
+            }
+            
+            // Filter by access level.
+            if ($access = (int) $this->getState('filter.access')) {
+                $query->where($db->quoteName('a.access') . ' = :access')
+                ->bind(':access', $access, ParameterType::INTEGER);
+            }
+            
+            // Implement View Level Access
+            if (!$user->authorise('core.admin')) {
+                $groups = $user->getAuthorisedViewLevels();
+                $query->whereIn($db->quoteName('a.access'), $groups);
+            }
+            
+            // Filter by published state
+            $published = (string) $this->getState('filter.published');
+            
+            if (is_numeric($published)) {
+                $published = (int) $published;
+                $query->where($db->quoteName('a.published') . ' = :published')
+                ->bind(':published', $published, ParameterType::INTEGER);
+            } elseif ($published === '') {
+                $query->whereIn($db->quoteName('a.published'), [0, 1]);
+            }
+            
+            // Filter by search in title
+            $search = $this->getState('filter.search');
+            
+            if (!empty($search)) {
+                if (stripos($search, 'id:') === 0) {
+                    $search = (int) substr($search, 3);
+                    $query->where($db->quoteName('a.id') . ' = :search')
+                    ->bind(':search', $search, ParameterType::INTEGER);
+                } else {
+                    $search = '%' . str_replace(' ', '%', trim($search)) . '%';
+                    $query->extendWhere(
+                        'AND',
+                        [
+                            $db->quoteName('a.title') . ' LIKE :title',
+                            $db->quoteName('a.alias') . ' LIKE :alias',
+                            $db->quoteName('a.note') . ' LIKE :note',
+                        ],
+                        'OR'
+                        )
+                        ->bind(':title', $search)
+                        ->bind(':alias', $search)
+                        ->bind(':note', $search);
+                }
+            }
+            
+            // Filter on the language.
+            if ($language = $this->getState('filter.language')) {
+                $query->where($db->quoteName('a.language') . ' = :language')
+                ->bind(':language', $language);
+            }
+            
+            // Filter by a single or group of tags.
+            $tag       = $this->getState('filter.tag');
+            $typeAlias = $extension . '.category';
+            
+            // Run simplified query when filtering by one tag.
+            if (\is_array($tag) && \count($tag) === 1) {
+                $tag = $tag[0];
+            }
+            
+            if ($tag && \is_array($tag)) {
+                $tag = ArrayHelper::toInteger($tag);
+                
+                $subQuery = $db->getQuery(true)
+                ->select('DISTINCT ' . $db->quoteName('content_item_id'))
+                ->from($db->quoteName('#__contentitem_tag_map'))
+                ->where(
+                    [
+                        $db->quoteName('tag_id') . ' IN (' . implode(',', $query->bindArray($tag)) . ')',
+                        $db->quoteName('type_alias') . ' = :typeAlias',
+                    ]
+                    );
+                
+                $query->join(
+                    'INNER',
+                    '(' . $subQuery . ') AS ' . $db->quoteName('tagmap'),
+                    $db->quoteName('tagmap.content_item_id') . ' = ' . $db->quoteName('a.id')
+                    )
+                    ->bind(':typeAlias', $typeAlias);
+            } elseif ($tag = (int) $tag) {
+                $query->join(
+                    'INNER',
+                    $db->quoteName('#__contentitem_tag_map', 'tagmap'),
+                    $db->quoteName('tagmap.content_item_id') . ' = ' . $db->quoteName('a.id')
+                    )
+                    ->where(
+                        [
+                            $db->quoteName('tagmap.tag_id') . ' = :tag',
+                            $db->quoteName('tagmap.type_alias') . ' = :typeAlias',
+                        ]
+                        )
+                        ->bind(':tag', $tag, ParameterType::INTEGER)
+                        ->bind(':typeAlias', $typeAlias);
+            }
+            
+            // Add the list ordering clause
+            $listOrdering = $this->getState('list.ordering', 'a.lft');
+            $listDirn = $db->escape($this->getState('list.direction', 'ASC'));
+            
+            if ($listOrdering == 'a.access') {
+                $query->order('a.access ' . $listDirn . ', a.lft ' . $listDirn);
+            } else {
+                $query->order($db->escape($listOrdering) . ' ' . $listDirn);
+            }
+            
+            // Group by on Categories for \JOIN with component tables to count items
+            $query->group('a.id,
+				a.title,
+				a.alias,
+				a.note,
+				a.published,
+				a.access,
+				a.checked_out,
+				a.checked_out_time,
+				a.created_user_id,
+				a.path,
+				a.parent_id,
+				a.level,
+				a.lft,
+				a.rgt,
+				a.language,
+				l.title,
+				l.image,
+				uc.name,
+				ag.title,
+				ua.name');
+            
+            return $query;
+    }
+    
+    /**
+     * Method to determine if an association exists
+     *
+     * @return  boolean  True if the association exists
+     *
+     * @since   3.0
+     */
+    public function getAssoc()
+    {
+        if (!\is_null($this->hasAssociation)) {
+            return $this->hasAssociation;
+        }
+        
+        $extension = $this->getState('filter.extension');
+        
+        $this->hasAssociation = Associations::isEnabled();
+        $extension = explode('.', $extension);
+        $component = array_shift($extension);
+        $cname = str_replace('com_', '', $component);
+        
+        if (!$this->hasAssociation || !$component || !$cname) {
+            $this->hasAssociation = false;
+            
+            return $this->hasAssociation;
+        }
+        
+        $componentObject = $this->bootComponent($component);
+        
+        if ($componentObject instanceof AssociationServiceInterface && $componentObject instanceof CategoryServiceInterface) {
+            $this->hasAssociation = true;
+            
+            return $this->hasAssociation;
+        }
+        
+        $hname = $cname . 'HelperAssociation';
+        \JLoader::register($hname, JPATH_SITE . '/components/' . $component . '/helpers/association.php');
+        
+        $this->hasAssociation = class_exists($hname) && !empty($hname::$category_association);
+        
+        return $this->hasAssociation;
+    }
+    
+    /**
+     * Method to get an array of data items.
+     *
+     * @return  mixed  An array of data items on success, false on failure.
+     *
+     * @since   3.0.1
+     */
+    public function getItems()
+    {
+        if ($this->internalAdminCategories === false)
+        {
+            $params = [
+                'ordering'         => $this->getState('list.ordering'),
+                'direction'        => $this->getState('list.direction') == 'asc' ? 1 : -1,
+                'search'           => $this->getState('filter.search'),
+                'unpublished'      => 1,
+                'published'        => $this->getState('filter.published'),
+                'filterTitle'      => $this->getState('filter.title'),
+                'filterType'       => $this->getState('filter.type'),
+                'filterAccess'     => $this->getState('filter.access'),
+                'filterLocked'     => $this->getState('filter.locked'),
+                'filterAllowPolls' => $this->getState('filter.allowPolls'),
+                'filterReview'     => $this->getState('filter.review'),
+                'filterAnonymous'  => $this->getState('filter.anonymous'),
+                'action'           => 'none',
+            ];
+            
+            $catid      = $this->getState('item.id', 0);
+            $categories = [];
+            $orphans    = [];
+            
+            if ($catid)
+            {
+                $categories   = KunenaCategoryHelper::getParents($catid, $this->getState('filter.levels') - 1, ['unpublished' => 1, 'action' => 'none']);
+                $categories[] = KunenaCategoryHelper::get($catid);
+            }
+            else
+            {
+                $orphans = KunenaCategoryHelper::getOrphaned($this->getState('filter.levels') - 1, $params);
+            }
+            
+            $categories = array_merge($categories, KunenaCategoryHelper::getChildren($catid, $this->getState('filter.levels') - 1, $params));
+            $categories = array_merge($orphans, $categories);
+            
+            $categories = KunenaCategoryHelper::getIndentation($categories);
+            $this->setState('list.total', \count($categories));
+            
+            if ($this->getState('list.limit'))
+            {
+                $this->internalAdminCategories = \array_slice($categories, $this->getState('list.start'), $this->getState('list.limit'));
+            }
+            else
+            {
+                $this->internalAdminCategories = $categories;
+            }
+            
+            $admin = 0;
+            $acl   = KunenaAccess::getInstance();
+            
+            foreach ($this->internalAdminCategories as $category)
+            {
+                // TODO: Following is needed for J!2.5 only:
+                $parent   = $category->getParent();
+                $siblings = array_keys(KunenaCategoryHelper::getCategoryTree($category->parentid));
+                
+                if ($parent)
+                {
+                    $category->up      = $this->me->isAdmin($parent) && reset($siblings) != $category->id;
+                    $category->down    = $this->me->isAdmin($parent) && end($siblings) != $category->id;
+                    $category->reOrder = $this->me->isAdmin($parent);
+                }
+                else
+                {
+                    $category->up      = $this->me->isAdmin($category) && reset($siblings) != $category->id;
+                    $category->down    = $this->me->isAdmin($category) && end($siblings) != $category->id;
+                    $category->reOrder = $this->me->isAdmin($category);
+                }
+                
+                // Get ACL groups for the category.
+                $access               = $acl->getCategoryAccess($category);
+                $category->accessname = [];
+                
+                foreach ($access as $item)
+                {
+                    if (!empty($item['admin.link']))
+                    {
+                        $category->accessname[] = '<a href="' . htmlentities($item['admin.link'], ENT_COMPAT, 'utf-8') . '">' . htmlentities($item['title'], ENT_COMPAT, 'utf-8') . '</a>';
+                    }
+                    else
+                    {
+                        $category->accessname[] = htmlentities($item['title'], ENT_COMPAT, 'utf-8');
+                    }
+                }
+                
+                $category->accessname = implode(' / ', $category->accessname);
+                
+                // Checkout?
+                if ($this->me->isAdmin($category) && $category->isCheckedOut(0))
+                {
+                    $category->editor = KunenaFactory::getUser($category->checked_out)->getName();
+                }
+                else
+                {
+                    $category->checked_out = 0;
+                    $category->editor      = '';
+                }
+                
+                $admin += $this->me->isAdmin($category);
+            }
+            
+            $this->setState('list.count.admin', $admin);
+        }
+        
+        if (!empty($orphans))
+        {
+            $this->app->enqueueMessage(Text::_('COM_KUNENA_CATEGORY_ORPHAN_DESC'), 'notice');
+        }
+        
+        return $this->internalAdminCategories;
+    }
+    
+    /**
+     * Method to load the countItems method from the extensions
+     *
+     * @param   \stdClass[]  $items      The category items
+     * @param   string       $extension  The category extension
+     *
+     * @return  void
+     *
+     * @since   3.5
+     */
+    public function countItems(&$items, $extension)
+    {
+        $parts     = explode('.', $extension, 2);
+        $section   = '';
+        
+        if (\count($parts) > 1) {
+            $section = $parts[1];
+        }
+        
+        $component = Factory::getApplication()->bootComponent($parts[0]);
+        
+        if ($component instanceof CategoryServiceInterface) {
+            $component->countItems($items, $section);
+        }
+    }
+    
+    /**
+     * Manipulate the query to be used to evaluate if this is an Empty State to provide specific conditions for this extension.
+     *
+     * @return DatabaseQuery
+     *
+     * @since 4.0.0
+     */
+    protected function getEmptyStateQuery()
+    {
+        $query = parent::getEmptyStateQuery();
+        
+        // Get the extension from the filter
+        $extension = $this->getState('filter.extension');
+        
+        $query->where($this->getDatabase()->quoteName('extension') . ' = :extension')
+        ->bind(':extension', $extension);
+        
+        return $query;
+    }
 }

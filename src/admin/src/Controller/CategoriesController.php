@@ -16,9 +16,9 @@ namespace Kunena\Forum\Administrator\Controller;
 
 use Exception;
 use Joomla\CMS\Language\Text;
+use Joomla\CMS\MVC\Controller\AdminController;
 use Joomla\CMS\Session\Session;
 use Joomla\Utilities\ArrayHelper;
-use Kunena\Forum\Libraries\Controller\KunenaController;
 use Kunena\Forum\Libraries\Factory\KunenaFactory;
 use Kunena\Forum\Libraries\Forum\Category\KunenaCategoryHelper;
 use Kunena\Forum\Libraries\Route\KunenaRoute;
@@ -31,7 +31,7 @@ use RuntimeException;
  * @property  $me  KunenaUser
  * @since   Kunena 2.0
  */
-class CategoriesController extends KunenaController
+class CategoriesController extends AdminController
 {
 	/**
 	 * @var     string
@@ -354,45 +354,6 @@ class CategoriesController extends KunenaController
 
 		$id = array_shift($cid);
 		$this->setRedirect(KunenaRoute::_("administrator/index.php?option=com_kunena&view=category&layout=create&catid={$id}", false));
-	}
-
-	/**
-	 * Edit
-	 *
-	 * @param   null  $key     key
-	 * @param   null  $urlVar  url var
-	 *
-	 * @return  void
-	 *
-	 * @throws  Exception
-	 * @since   Kunena 2.0.0-BETA2
-	 */
-	public function edit($key = null, $urlVar = null)
-	{
-		KunenaFactory::loadLanguage('com_kunena', 'admin');
-
-		if (!Session::checkToken('post'))
-		{
-			$this->app->enqueueMessage(Text::_('COM_KUNENA_ERROR_TOKEN'), 'error');
-			$this->setRedirect(KunenaRoute::_($this->baseurl, false));
-
-			return;
-		}
-
-		$cid = $this->input->get('cid', [], 'array');
-		$cid = ArrayHelper::toInteger($cid);
-
-		$id = array_shift($cid);
-
-		if (!$id)
-		{
-			$this->app->enqueueMessage(Text::_('COM_KUNENA_A_NO_CATEGORIES_SELECTED'), 'notice');
-			$this->setRedirect(KunenaRoute::_($this->baseurl, false));
-
-			return;
-		}
-
-		$this->setRedirect(KunenaRoute::_("administrator/index.php?option=com_kunena&view=category&layout=edit&catid={$id}", false));
 	}
 
 	/**

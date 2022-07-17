@@ -40,7 +40,7 @@ class CategoryModel extends CategoriesModel
 	 *
 	 * @throws  Exception
 	 */
-	public function getAdminCategory()
+	public function getItems()
 	{
 		$category = KunenaCategoryHelper::get($this->getState($this->getName() . '.id'));
 

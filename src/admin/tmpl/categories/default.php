@@ -1,396 +1,306 @@
 <?php
+
 /**
- * Kunena Component
+ * @package     Joomla.Administrator
+ * @subpackage  com_categories
  *
- * @package         Kunena.Administrator.Template
- * @subpackage      Categories
- *
- * @copyright       Copyright (C) 2008 - 2022 Kunena Team. All rights reserved.
- * @license         https://www.gnu.org/copyleft/gpl.html GNU/GPL
- * @link            https://www.kunena.org
- **/
-defined('_JEXEC') or die();
+ * @copyright   (C) 2008 Open Source Matters, Inc. <https://www.joomla.org>
+ * @license     GNU General Public License version 2 or later; see LICENSE.txt
+ */
 
+defined('_JEXEC') or die;
+
+use Joomla\CMS\Factory;
 use Joomla\CMS\HTML\HTMLHelper;
+use Joomla\CMS\Language\Multilanguage;
 use Joomla\CMS\Language\Text;
+use Joomla\CMS\Layout\LayoutHelper;
 use Joomla\CMS\Router\Route;
-use Joomla\CMS\WebAsset\WebAssetManager;
-use Kunena\Forum\Libraries\Factory\KunenaFactory;
-use Kunena\Forum\Libraries\Route\KunenaRoute;
-use Kunena\Forum\Libraries\Version\KunenaVersion;
+use Joomla\CMS\Session\Session;
+use Joomla\String\Inflector;
 
-/** @var WebAssetManager $wa */
+/** @var \Joomla\CMS\WebAsset\WebAssetManager $wa */
 $wa = $this->document->getWebAssetManager();
-$wa->useScript('multiselect');
+$wa->useScript('table.columns')
+->useScript('multiselect');
 
+$user      = Factory::getUser();
+$userId    = $user->get('id');
+$extension = $this->escape($this->state->get('filter.extension'));
 $listOrder = $this->escape($this->state->get('list.ordering'));
 $listDirn  = $this->escape($this->state->get('list.direction'));
-$saveOrder = ($listOrder == 'a.order' && strtolower($listDirn) == 'asc');
+$saveOrder = ($listOrder == 'a.lft' && strtolower($listDirn) == 'asc');
+$parts     = explode('.', $extension, 2);
+$component = $parts[0];
+$section   = null;
 
-if ($saveOrder && !empty($this->items))
-{
-	$saveOrderingUrl = $this->list->saveOrderingUrl;
-	HTMLHelper::_('draggablelist.draggable');
+if (count($parts) > 1) {
+    $section = $parts[1];
+    
+    $inflector = Inflector::getInstance();
+    
+    if (!$inflector->isPlural($section)) {
+        $section = $inflector->toPlural($section);
+    }
 }
 
+if ($saveOrder && !empty($this->items)) {
+    $saveOrderingUrl = 'index.php?option=com_kunena&task=categories.saveOrderAjax&tmpl=component&' . Session::getFormToken() . '=1';
+    HTMLHelper::_('draggablelist.draggable');
+}
 ?>
-
-<div id="kunena" class="container-fluid">
+<form action="<?php echo Route::_('index.php?option=com_kunena&view=categories'); ?>" method="post" name="adminForm" id="adminForm">
     <div class="row">
-        <div id="j-main-container" class="col-md-12" role="main">
-            <div class="card card-block bg-faded p-2">
-                <form action="<?php echo KunenaRoute::_('administrator/index.php?option=com_kunena&view=categories'); ?>"
-                      method="post" name="adminForm"
-                      id="adminForm">
-                    <input type="hidden" name="task" value=""/>
-                    <input type="hidden" name="catid" value="<?php echo $this->filter->Item; ?>"/>
-                    <input type="hidden" name="boxchecked" value="0"/>
-                    <input type="hidden" name="filter_order" value="<?php echo $this->list->Ordering; ?>"/>
-                    <input type="hidden" name="filter_order_Dir" value="<?php echo $this->list->Direction; ?>"/>
-					<?php echo HTMLHelper::_('form.token'); ?>
-
-                    <div id="filter-bar" class="btn-toolbar">
-                        <div class="filter-search btn-group pull-left">
-                            <label for="filter_search"
-                                   class="element-invisible"><?php echo Text::_('COM_KUNENA_FIELD_LABEL_SEARCHIN'); ?></label>
-                            <input type="text" name="filter_search" id="filter_search" class="filter form-control"
-                                   placeholder="<?php echo Text::_('COM_KUNENA_CATEGORIES_FIELD_INPUT_SEARCHCATEGORIES'); ?>"
-                                   value="<?php echo $this->filter->Search; ?>"
-                                   title="<?php echo Text::_('COM_KUNENA_CATEGORIES_FIELD_INPUT_SEARCHCATEGORIES'); ?>"/>
-                        </div>
-                        <div class="btn-group pull-left">
-                            <button class="btn btn-outline-primary tip" type="submit"
-                                    title="<?php echo Text::_('COM_KUNENA_SYS_BUTTON_FILTERSUBMIT'); ?>"><i
-                                        class="icon-search"></i> <?php echo Text::_('COM_KUNENA_SYS_BUTTON_FILTERSUBMIT') ?>
-                            </button>
-                            <button class="btn btn-outline-primary tip" type="button"
-                                    title="<?php echo Text::_('COM_KUNENA_SYS_BUTTON_FILTERRESET'); ?>"
-                                    onclick="jQuery('.filter').val('');jQuery('#adminForm').submit();"><i
-                                        class="icon-remove"></i> <?php echo Text::_('COM_KUNENA_SYS_BUTTON_FILTERRESET'); ?>
-                            </button>
-                        </div>
-                        <div class="btn-group pull-right hidden-phone">
-                            <label for="limit"
-                                   class="element-invisible"><?php echo Text::_('JFIELD_PLG_SEARCH_SEARCHLIMIT_DESC'); ?></label>
-							<?php echo $this->pagination->getLimitBox(); ?>
-                        </div>
-                        <div class="btn-group pull-right hidden-phone">
-                            <label for="directionTable"
-                                   class="element-invisible"><?php echo Text::_('JFIELD_ORDERING_DESC'); ?></label>
-                            <select name="directionTable" id="directionTable" class="form-select input-medium"
-                                    onchange="Joomla.orderTable()">
-                                <option value=""><?php echo Text::_('JFIELD_ORDERING_DESC'); ?></option>
-								<?php echo HTMLHelper::_('select.options', $this->getSortDirectionFields(), 'value', 'text', $this->list->Direction); ?>
-                            </select>
-                        </div>
-                        <div class="btn-group pull-right">
-                            <label for="sortTable"
-                                   class="element-invisible"><?php echo Text::_('JGLOBAL_SORT_BY'); ?></label>
-                            <select name="sortTable" id="sortTable" class="form-select input-medium" onchange="Joomla.orderTable()">
-                                <option value=""><?php echo Text::_('JGLOBAL_SORT_BY'); ?></option>
-								<?php echo HTMLHelper::_('select.options', $this->sortFields, 'value', 'text', $this->list->Ordering); ?>
-                            </select>
-                        </div>
-                        <!-- TODO: not implemented
-							<div class="btn-group pull-right">
-								<label for="sortTable" class="element-invisible"><?php // Echo Text::_('JGLOBAL_SORT_BY');?></label>
-								<select name="levellimit" id="sortTable" class="input-medium" onchange="Joomla.orderTable()">
-									<option value=""><?php // Echo Text::_('JOPTION_SELECT_MAX_LEVELS');?></option>
-									<?php // echo HTMLHelper::_('select.options', $this->levelFields, 'value', 'text', $this->filterLevels);?>
-								</select>
-							</div>-->
-                        <div class="clearfix"></div>
+        <div class="col-md-12">
+            <div id="j-main-container" class="j-main-container">
+                <?php
+                // Search tools bar
+                echo LayoutHelper::render('joomla.searchtools.default', array('view' => $this));
+                ?>
+                <?php if (empty($this->items)) : ?>
+                    <div class="alert alert-info">
+                        <span class="icon-info-circle" aria-hidden="true"></span><span class="visually-hidden"><?php echo Text::_('INFO'); ?></span>
+                        <?php echo Text::_('JGLOBAL_NO_MATCHING_RESULTS'); ?>
                     </div>
-
-                    <table class="table table-striped" id="categoryList">
+                <?php else : ?>
+                    <table class="table" id="categoryList">
+                        <caption class="visually-hidden">
+                            <?php echo Text::_('COM_CATEGORIES_TABLE_CAPTION'); ?>,
+                            <span id="orderedBy"><?php echo Text::_('JGLOBAL_SORTED_BY'); ?> </span>,
+                            <span id="filteredBy"><?php echo Text::_('JGLOBAL_FILTERED_BY'); ?></span>
+                        </caption>
                         <thead>
-                        <tr>
-                            <th width="1%" class="hidden-phone">
-                                <?php echo HTMLHelper::_('grid.checkall'); ?>
-                            </th>
-                            <th width="1%" class="nowrap center hidden-phone">
-								<?php echo HTMLHelper::_('searchtools.sort', '', 'a.lft', $this->list->Direction, $this->list->Ordering, null, 'asc', 'JGRID_HEADING_ORDERING', 'icon-sort'); ?>
-                            </th>
-                            <th width="5%" class="nowrap center">
-								<?php echo HTMLHelper::_('grid.sort', 'JSTATUS', 'p.published', $this->list->Direction, $this->list->Ordering); ?>
-                            </th>
-                            <th width="1%" class="nowrap">
-								<?php echo Text::_('COM_KUNENA_GO'); ?>
-                            </th>
-                            <th width="51%" class="nowrap">
-								<?php echo HTMLHelper::_('grid.sort', 'JGLOBAL_TITLE', 'p.title', $this->list->Direction, $this->list->Ordering); ?>
-                            </th>
-                            <th width="20%" class="nowrap center hidden-phone">
-								<?php echo HTMLHelper::_('grid.sort', 'COM_KUNENA_CATEGORIES_LABEL_ACCESS', 'p.access', $this->list->Direction, $this->list->Ordering); ?>
-                            </th>
-                            <th width="5%" class="nowrap center">
-								<?php echo HTMLHelper::_('grid.sort', 'COM_KUNENA_LOCKED', 'p.locked', $this->list->Direction, $this->list->Ordering); ?>
-                            </th>
-                            <th width="5%" class="nowrap center">
-								<?php echo HTMLHelper::_('grid.sort', 'COM_KUNENA_REVIEW', 'p.review', $this->list->Direction, $this->list->Ordering); ?>
-                            </th>
-                            <th width="5%" class="center">
-								<?php echo HTMLHelper::_('grid.sort', 'COM_KUNENA_CATEGORIES_LABEL_POLL', 'p.allowPolls', $this->list->Direction, $this->list->Ordering); ?>
-                            </th>
-                            <th width="5%" class="nowrap center">
-								<?php echo HTMLHelper::_('grid.sort', 'COM_KUNENA_CATEGORY_ANONYMOUS', 'p.anonymous', $this->list->Direction, $this->list->Ordering); ?>
-                            </th>
-                            <th width="1%" class="nowrap center hidden-phone">
-								<?php echo HTMLHelper::_('grid.sort', 'JGRID_HEADING_ID', 'p.id', $this->list->Direction, $this->list->Ordering); ?>
-                            </th>
-                        </tr>
-                        <tr>
-                            <td class="hidden-phone">
-                            </td>
-                            <td class="hidden-phone">
-                            </td>
-                            <td class="nowrap center">
-                                <label for="filter_published"
-                                       class="element-invisible"><?php echo Text::_('All'); ?></label>
-                                <select name="filter_published" id="filter_published"
-                                        class="select-filter filter form-control"
-                                        onchange="Joomla.orderTable()">
-                                    <option value=""><?php echo Text::_('COM_KUNENA_FIELD_LABEL_ALL'); ?></option>
-									<?php echo HTMLHelper::_('select.options', $this->publishedOptions(), 'value', 'text', $this->filter->Published, true); ?>
-                                </select>
-                            </td>
-                            <td>
-                            </td>
-                            <td class="nowrap">
-                                <label for="filterTitle"
-                                       class="element-invisible"><?php echo Text::_('COM_KUNENA_FIELD_LABEL_SEARCHIN'); ?></label>
-                                <input class="input-block-level input-filter filter form-control" type="text"
-                                       name="filterTitle"
-                                       id="filterTitle"
-                                       placeholder="<?php echo Text::_('COM_KUNENA_SYS_BUTTON_FILTERSUBMIT') ?>"
-                                       value="<?php echo $this->filter->Title; ?>"
-                                       title="<?php echo Text::_('COM_KUNENA_SYS_BUTTON_FILTERSUBMIT') ?>"/>
-                            </td>
-                            <td class="nowrap center hidden-phone">
-                                <label for="filterAccess"
-                                       class="element-invisible"><?php echo Text::_('COM_KUNENA_FIELD_LABEL_ALL'); ?></label>
-                                <select name="filterAccess" id="filterAccess"
-                                        class="select-filter filter form-control"
-                                        onchange="Joomla.orderTable()">
-                                    <option value=""><?php echo Text::_('COM_KUNENA_FIELD_LABEL_ALL'); ?></option>
-									<?php echo HTMLHelper::_('select.options', HTMLHelper::_('access.assetgroups'), 'value', 'text', $this->filter->Access); ?>
-                                </select>
-                            </td>
-                            <td class="nowrap center">
-                                <label for="filterLocked"
-                                       class="element-invisible"><?php echo Text::_('COM_KUNENA_FIELD_LABEL_ALL'); ?></label>
-                                <select name="filterLocked" id="filterLocked"
-                                        class="select-filter filter form-control"
-                                        onchange="Joomla.orderTable()">
-                                    <option value=""><?php echo Text::_('COM_KUNENA_FIELD_LABEL_ALL'); ?></option>
-									<?php echo HTMLHelper::_('select.options', $this->lockOptions(), 'value', 'text', $this->filter->Locked); ?>
-                                </select>
-                            </td>
-                            <td class="nowrap center">
-                                <label for="filterReview"
-                                       class="element-invisible"><?php echo Text::_('COM_KUNENA_FIELD_LABEL_ALL'); ?></label>
-                                <select name="filterReview" id="filterReview"
-                                        class="select-filter filter form-control"
-                                        onchange="Joomla.orderTable()">
-                                    <option value=""><?php echo Text::_('COM_KUNENA_FIELD_LABEL_ALL'); ?></option>
-									<?php echo HTMLHelper::_('select.options', $this->reviewOptions(), 'value', 'text', $this->filter->Review); ?>
-                                </select>
-                            </td>
-                            <td class="nowrap center">
-                                <label for="filterAllowPolls"
-                                       class="element-invisible"><?php echo Text::_('COM_KUNENA_FIELD_LABEL_ALL'); ?></label>
-                                <select name="filterAllowPolls" id="filterAllowPolls"
-                                        class="select-filter filter form-control"
-                                        onchange="Joomla.orderTable()">
-                                    <option value=""><?php echo Text::_('COM_KUNENA_FIELD_LABEL_ALL'); ?></option>
-									<?php echo HTMLHelper::_('select.options', $this->allowPollsOptions(), 'value', 'text', $this->filter->Allow_polls); ?>
-                                </select>
-                            </td>
-                            <td class="nowrap center">
-                                <label for="filterAnonymous"
-                                       class="element-invisible"><?php echo Text::_('COM_KUNENA_FIELD_LABEL_ALL'); ?></label>
-                                <select name="filterAnonymous" id="filterAnonymous"
-                                        class="select-filter filter form-control"
-                                        onchange="Joomla.orderTable()">
-                                    <option value=""><?php echo Text::_('COM_KUNENA_FIELD_LABEL_ALL'); ?></option>
-									<?php echo HTMLHelper::_('select.options', $this->anonymousOptions(), 'value', 'text', $this->filter->Anonymous); ?>
-                                </select>
-                            </td>
-                            <td class="nowrap center hidden-phone">
-                            </td>
-                        </tr>
+                            <tr>
+                                <td class="w-1 text-center">
+                                    <?php echo HTMLHelper::_('grid.checkall'); ?>
+                                </td>
+                                <th scope="col" class="w-1 text-center d-none d-md-table-cell">
+                                    <?php echo HTMLHelper::_('searchtools.sort', '', 'a.lft', $listDirn, $listOrder, null, 'asc', 'JGRID_HEADING_ORDERING', 'icon-sort'); ?>
+                                </th>
+                                <th scope="col" class="w-1 text-center">
+                                    <?php echo HTMLHelper::_('searchtools.sort', 'JSTATUS', 'a.published', $listDirn, $listOrder); ?>
+                                </th>
+                                <th scope="col">
+                                    <?php echo HTMLHelper::_('searchtools.sort', 'JGLOBAL_TITLE', 'a.title', $listDirn, $listOrder); ?>
+                                </th>
+                                <?php if (isset($this->items[0]) && property_exists($this->items[0], 'count_published')) : ?>
+                                    <th scope="col" class="w-3 text-center d-none d-md-table-cell">
+                                        <span class="icon-check" aria-hidden="true" title="<?php echo Text::_('COM_CATEGORY_COUNT_PUBLISHED_ITEMS'); ?>"></span>
+                                        <span class="visually-hidden"><?php echo Text::_('COM_CATEGORY_COUNT_PUBLISHED_ITEMS'); ?></span>
+                                    </th>
+                                <?php endif; ?>
+                                <?php if (isset($this->items[0]) && property_exists($this->items[0], 'count_unpublished')) : ?>
+                                    <th scope="col" class="w-3 text-center d-none d-md-table-cell">
+                                        <span class="icon-times" aria-hidden="true" title="<?php echo Text::_('COM_CATEGORY_COUNT_UNPUBLISHED_ITEMS'); ?>"></span>
+                                        <span class="visually-hidden"><?php echo Text::_('COM_CATEGORY_COUNT_UNPUBLISHED_ITEMS'); ?></span>
+                                    </th>
+                                <?php endif; ?>
+                                <?php if (isset($this->items[0]) && property_exists($this->items[0], 'count_archived')) : ?>
+                                    <th scope="col" class="w-3 text-center d-none d-md-table-cell">
+                                        <span class="icon-folder icon-fw" aria-hidden="true" title="<?php echo Text::_('COM_CATEGORY_COUNT_ARCHIVED_ITEMS'); ?>"></span>
+                                        <span class="visually-hidden"><?php echo Text::_('COM_CATEGORY_COUNT_ARCHIVED_ITEMS'); ?></span>
+                                    </th>
+                                <?php endif; ?>
+                                <?php if (isset($this->items[0]) && property_exists($this->items[0], 'count_trashed')) : ?>
+                                    <th scope="col" class="w-3 text-center d-none d-md-table-cell">
+                                        <span class="icon-trash" aria-hidden="true" title="<?php echo Text::_('COM_CATEGORY_COUNT_TRASHED_ITEMS'); ?>"></span>
+                                        <span class="visually-hidden"><?php echo Text::_('COM_CATEGORY_COUNT_TRASHED_ITEMS'); ?></span>
+                                    </th>
+                                <?php endif; ?>
+                                <th scope="col" class="w-10 d-none d-md-table-cell">
+                                    <?php echo HTMLHelper::_('searchtools.sort', 'JGRID_HEADING_ACCESS', 'access_level', $listDirn, $listOrder); ?>
+                                </th>
+                                <?php if ($this->assoc) : ?>
+                                    <th scope="col" class="w-10 d-none d-md-table-cell">
+                                        <?php echo HTMLHelper::_('searchtools.sort', 'COM_CATEGORY_HEADING_ASSOCIATION', 'association', $listDirn, $listOrder); ?>
+                                    </th>
+                                <?php endif; ?>
+                                <?php if (Multilanguage::isEnabled()) : ?>
+                                    <th scope="col" class="w-10 d-none d-md-table-cell">
+                                        <?php echo HTMLHelper::_('searchtools.sort', 'JGRID_HEADING_LANGUAGE', 'language_title', $listDirn, $listOrder); ?>
+                                    </th>
+                                <?php endif; ?>
+                                <th scope="col" class="w-5 d-none d-md-table-cell">
+                                    <?php echo HTMLHelper::_('searchtools.sort', 'JGRID_HEADING_ID', 'a.id', $listDirn, $listOrder); ?>
+                                </th>
+                            </tr>
                         </thead>
-                        <tfoot>
-                        <tr>
-                            <td colspan="10">
-								<?php echo $this->pagination->getListFooter(); ?>
-								<?php // Load the batch processing form. ?>
-								<?php echo $this->loadTemplate('batch'); ?>
-								<?php // Load the modal to confirm delete. ?>
-								<?php echo $this->loadTemplate('confirmdelete'); ?>
-                            </td>
-                        </tr>
-                        </tfoot>
-                        <tbody <?php if ($saveOrder) : ?> class="js-draggable" data-url="<?php echo $saveOrderingUrl; ?>" data-direction="<?php echo strtolower($listDirn); ?>" data-nested="true"<?php endif; ?>>
-						<?php
-						$img_no             = '<i class="icon-cancel"></i>';
-						$img_yes            = '<i class="icon-checkmark"></i>';
-						$i                  = 0;
+                        <tbody <?php if ($saveOrder) :
+                            ?> class="js-draggable" data-url="<?php echo $saveOrderingUrl; ?>" data-direction="<?php echo strtolower($listDirn); ?>" data-nested="false"<?php
+                               endif; ?>>
+                            <?php foreach ($this->items as $i => $item) : ?>
+                                <?php
+                                $canEdit = $this->me->isAdmin($item);
+                                $canCheckin = $this->user->authorise('core.admin', 'com_checkIn') || $item->checked_out == $this->user->id || $item->checked_out == 0;
+                                $canEditOwn = $canEdit;
+                                $canChange  = $canEdit && $canCheckin;
 
-						if ($this->pagination->total >= 0)
-							:
-							foreach ($this->categories as $item) : 
-								$canEdit = $this->me->isAdmin($item);
-								$canCheckin = $this->user->authorise('core.admin', 'com_checkIn') || $item->checked_out == $this->user->id || $item->checked_out == 0;
-								$canEditOwn = $canEdit;
-								$canChange  = $canEdit && $canCheckin;
-								?>
-                                <tr class="row<?php echo $i % 2; ?>" data-draggable-group="<?php echo $item->parentid; ?>" data-item-id="<?php echo $item->id ?>">
+                                // Get the parents of item for sorting
+                                if ($item->level > 1) {
+                                    $parentsStr = '';
+                                    $_currentParentId = $item->parentid;
+                                    $parentsStr = ' ' . $_currentParentId;
+                                    for ($i2 = 0; $i2 < $item->level; $i2++) {
+                                        foreach ($this->ordering as $k => $v) {
+                                            $v = implode('-', $v);
+                                            $v = '-' . $v . '-';
+                                            if (strpos($v, '-' . $_currentParentId . '-') !== false) {
+                                                $parentsStr .= ' ' . $k;
+                                                $_currentParentId = $k;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    $parentsStr = '';
+                                }
+                                ?>
+                                <tr class="row<?php echo $i % 2; ?>" data-draggable-group="<?php echo $item->parentid; ?>"
+                                    data-item-id="<?php echo $item->id ?>" data-parents="<?php echo $parentsStr ?>"
+                                    data-level="<?php echo $item->level ?>">
                                     <td class="text-center">
-										<?php echo HTMLHelper::_('grid.id', $i, $item->id, false, 'cid', 'cb', $item->name); ?>
+                                        <?php echo HTMLHelper::_('grid.id', $i, $item->id, false, 'cid', 'cb', $item->name); ?>
                                     </td>
                                     <td class="text-center d-none d-md-table-cell">
-										<?php
-										$iconClass = '';
-										if (!$canChange)
-										{
-											$iconClass = ' inactive';
-										}
-										elseif (!$saveOrder)
-										{
-											$iconClass = ' inactive" title="' . Text::_('JORDERINGDISABLED');
-										}
-										?>
-										<span class="sortable-handler<?php echo $iconClass ?>">
-											<span class="icon-ellipsis-v"></span>
-										</span>
-										<?php if ($canChange && $saveOrder) : ?>
-											<input type="text" class="hidden" name="order[]" size="5" value="<?php echo $item->lft; ?>">
-										<?php endif; ?>
-									</td>
-                                    <td class="center">
-										<?php echo HTMLHelper::_('jgrid.published', $item->published,  $i, 'category.'); ?>
+                                        <?php
+                                        $iconClass = '';
+                                        if (!$canChange) {
+                                            $iconClass = ' inactive';
+                                        } elseif (!$saveOrder) {
+                                            $iconClass = ' inactive" title="' . Text::_('JORDERINGDISABLED');
+                                        }
+                                        ?>
+                                        <span class="sortable-handler<?php echo $iconClass ?>">
+                                            <span class="icon-ellipsis-v"></span>
+                                        </span>
+                                        <?php if ($canChange && $saveOrder) : ?>
+                                            <input type="text" class="hidden" name="order[]" size="5" value="<?php echo $item->lft; ?>">
+                                        <?php endif; ?>
                                     </td>
-                                    <td class="center">
-										<?php if (!$this->filter->Item || ($this->filter->Item != $item->id && $item->parentid))
-											:
-											?>
-                                            <button class="btn btn-micro"
-                                                    title="Display only this item and its children"
-                                                    onclick="jQuery('input[name=catid]').val(<?php echo $item->id ?>);this.form.submit()">
-                                                <i class="icon-location"></i>
-                                            </button>
-										<?php else:
-											?>
-                                            <button class="btn btn-micro"
-                                                    title="Display only this item and its children"
-                                                    onclick="jQuery('input[name=catid]').val(<?php echo $item->parentid ?>);this.form.submit()">
-                                                <i class="icon-arrow-up"></i>
-                                            </button>
-										<?php endif; ?>
+                                    <td class="text-center">
+                                        <?php echo HTMLHelper::_('jgrid.published', $item->published, $i, 'categories.', $canChange); ?>
                                     </td>
-                                    <td class="has-context">
-										<?php
-										echo str_repeat('<span class="gi">&mdash;</span>', $item->level);
-
-										if ($item->checked_out)
-										{
-											$canCheckin = $item->checked_out == 0 || $item->checked_out == $this->user->id || $this->user->authorise('core.admin', 'com_checkIn');
-											$editor     = KunenaFactory::getUser($item->editor)->getName();
-											echo HTMLHelper::_('jgrid.checkedout', $i, $editor, $item->checked_out_time, 'category.', $canCheckin);
-										}
-										?>
-                                        <a href="<?php echo Route::_('index.php?option=com_kunena&view=category&layout=edit&catid=' . (int) $item->id); ?>">
-											<?php echo $this->escape($item->name); ?>
-                                        </a>
-                                        <small>
-											<?php echo Text::sprintf('JGLOBAL_LIST_ALIAS', $this->escape($item->alias)); ?>
-                                        </small>
-                                    </td>
-                                    <td class="center hidden-phone">
-                                        <span><?php echo $item->accessname; ?></span>
-                                        <small>
-											<?php echo Text::sprintf('(Access: %s)', $this->escape($item->accesstype)); ?>
-                                        </small>
-                                    </td>
-                                    <td class="center hidden-phone">
-                                        <a class="btn btn-micro <?php echo $item->locked ? 'active' : ''; ?>"
-                                           href="javascript: void(0);"
-                                           onclick="return Joomla.listItemTask('cb<?php echo $i; ?>','<?php echo($item->locked ? 'un' : '') . 'lock'; ?>')">
-											<?php echo $item->locked == 1 ? $img_yes : $img_no; ?>
-                                        </a>
-                                    </td>
-									<?php if ($item->isSection())
-										:
-										?>
-                                        <td class="center hidden-phone" colspan="3">
-											<?php echo Text::_('COM_KUNENA_SECTION'); ?>
-                                        </td>
-									<?php else
-
-										:
-										?>
-                                        <td class="center hidden-phone">
-                                            <a class="btn btn-micro <?php echo $item->review ? 'active' : ''; ?>"
-                                               href="javascript: void(0);"
-                                               onclick="return Joomla.listItemTask('cb<?php echo $i; ?>','<?php echo($item->review ? 'un' : '') . 'review'; ?>')">
-												<?php echo $item->review == 1 ? $img_yes : $img_no; ?>
+                                    <th scope="row">
+                                        <?php $prefix = LayoutHelper::render('joomla.html.treeprefix', array('level' => $item->level)); ?>
+                                        <?php echo $prefix; ?>
+                                        <?php if ($item->checked_out) : ?>
+                                            <?php echo HTMLHelper::_('jgrid.checkedout', $i, $item->editor, $item->checked_out_time, 'categories.', $canCheckin); ?>
+                                        <?php endif; ?>
+                                        <?php if ($canEdit || $canEditOwn) : ?>
+                                            <a href="<?php echo Route::_('index.php?option=com_kunena&view=category&task=category.edit&catid=' . $item->id); //echo Route::_('index.php?option=com_kunena&view=category&layout=edit&catid=' . $item->id); ?>" title="<?php echo Text::_('JACTION_EDIT'); ?> <?php echo $this->escape($item->name); ?>">
+                                                <?php echo $this->escape($item->name); ?></a>
+                                        <?php else : ?>
+                                            <?php echo $this->escape($item->name); ?>
+                                        <?php endif; ?>
+                                        <div>
+                                        <?php echo $prefix; ?>
+                                            <span class="small">
+                                                <?php if (empty($item->note)) : ?>
+                                                    <?php echo Text::sprintf('JGLOBAL_LIST_ALIAS', $this->escape($item->alias)); ?>
+                                                <?php else : ?>
+                                                    <?php echo Text::sprintf('JGLOBAL_LIST_ALIAS_NOTE', $this->escape($item->alias), $this->escape($item->note)); ?>
+                                                <?php endif; ?>
+                                            </span>
+                                        </div>
+                                    </th>
+                                    <?php if (isset($this->items[0]) && property_exists($this->items[0], 'count_published')) : ?>
+                                        <td class="text-center btns d-none d-md-table-cell itemnumber">
+                                            <a class="btn <?php echo ($item->count_published > 0) ? 'btn-success' : 'btn-secondary'; ?>"
+                                                href="<?php echo Route::_('index.php?option=' . $component . ($section ? '&view=' . $section : '') . '&filter[category_id]=' . (int) $item->id . '&filter[published]=1&filter[level]=1'); ?>"
+                                                aria-describedby="tip-publish<?php echo $i; ?>">
+                                                <?php echo $item->count_published; ?>
                                             </a>
+                                            <div role="tooltip" id="tip-publish<?php echo $i; ?>">
+                                                <?php echo Text::_('COM_CATEGORY_COUNT_PUBLISHED_ITEMS'); ?>
+                                            </div>
                                         </td>
-                                        <td class="center hidden-phone">
-                                            <a class="btn btn-micro <?php echo $item->allowPolls ? 'active' : ''; ?>"
-                                               href="javascript: void(0);"
-                                               onclick="return Joomla.listItemTask('cb<?php echo $i; ?>','<?php echo($item->allowPolls ? 'deny' : 'allow') . '_polls'; ?>')">
-												<?php echo $item->allowPolls == 1 ? $img_yes : $img_no; ?>
+                                    <?php endif; ?>
+                                    <?php if (isset($this->items[0]) && property_exists($this->items[0], 'count_unpublished')) : ?>
+                                        <td class="text-center btns d-none d-md-table-cell itemnumber">
+                                            <a class="btn <?php echo ($item->count_unpublished > 0) ? 'btn-danger' : 'btn-secondary'; ?>"
+                                                href="<?php echo Route::_('index.php?option=' . $component . ($section ? '&view=' . $section : '') . '&filter[category_id]=' . (int) $item->id . '&filter[published]=0&filter[level]=1'); ?>"
+                                                aria-describedby="tip-unpublish<?php echo $i; ?>">
+                                                <?php echo $item->count_unpublished; ?>
                                             </a>
+                                            <div role="tooltip" id="tip-unpublish<?php echo $i; ?>">
+                                                <?php echo Text::_('COM_CATEGORY_COUNT_UNPUBLISHED_ITEMS'); ?>
+                                            </div>
                                         </td>
-                                        <td class="center hidden-phone">
-                                            <a class="btn btn-micro <?php echo $item->allowAnonymous ? 'active' : ''; ?>"
-                                               href="javascript: void(0);"
-                                               onclick="return Joomla.listItemTask('cb<?php echo $i; ?>','<?php echo($item->allowAnonymous ? 'deny' : 'allow') . '_anonymous'; ?>')">
-												<?php echo $item->allowAnonymous == 1 ? $img_yes : $img_no; ?>
+                                    <?php endif; ?>
+                                    <?php if (isset($this->items[0]) && property_exists($this->items[0], 'count_archived')) : ?>
+                                        <td class="text-center btns d-none d-md-table-cell itemnumber">
+                                            <a class="btn <?php echo ($item->count_archived > 0) ? 'btn-info' : 'btn-secondary'; ?>"
+                                                href="<?php echo Route::_('index.php?option=' . $component . ($section ? '&view=' . $section : '') . '&filter[category_id]=' . (int) $item->id . '&filter[published]=2&filter[level]=1'); ?>"
+                                                aria-describedby="tip-archive<?php echo $i; ?>">
+                                                <?php echo $item->count_archived; ?>
                                             </a>
+                                            <div role="tooltip" id="tip-archive<?php echo $i; ?>">
+                                                <?php echo Text::_('COM_CATEGORY_COUNT_ARCHIVED_ITEMS'); ?>
+                                            </div>
                                         </td>
-									<?php endif; ?>
+                                    <?php endif; ?>
+                                    <?php if (isset($this->items[0]) && property_exists($this->items[0], 'count_trashed')) : ?>
+                                        <td class="text-center btns d-none d-md-table-cell itemnumber">
+                                            <a class="btn <?php echo ($item->count_trashed > 0) ? 'btn-dark' : 'btn-secondary'; ?>"
+                                                href="<?php echo Route::_('index.php?option=' . $component . ($section ? '&view=' . $section : '') . '&filter[category_id]=' . (int) $item->id . '&filter[published]=-2&filter[level]=1'); ?>"
+                                                aria-describedby="tip-trash<?php echo $i; ?>">
+                                                <?php echo $item->count_trashed; ?>
+                                            </a>
+                                            <div role="tooltip" id="tip-trash<?php echo $i; ?>">
+                                                <?php echo Text::_('COM_CATEGORY_COUNT_TRASHED_ITEMS'); ?>
+                                            </div>
+                                        </td>
+                                    <?php endif; ?>
 
-                                    <td class="center hidden-phone">
-										<?php echo (int) $item->id; ?>
+                                    <td class="small d-none d-md-table-cell">
+                                        <?php //echo $this->escape($item->access_level); ?>
+                                    </td>
+                                    <?php if ($this->assoc) : ?>
+                                        <td class="d-none d-md-table-cell">
+                                            <?php if ($item->association) : ?>
+                                                <?php echo HTMLHelper::_('categoriesadministrator.association', $item->id, $extension); ?>
+                                            <?php endif; ?>
+                                        </td>
+                                    <?php endif; ?>
+                                    <?php if (Multilanguage::isEnabled()) : ?>
+                                        <td class="small d-none d-md-table-cell">
+                                            <?php echo LayoutHelper::render('joomla.content.language', $item); ?>
+                                        </td>
+                                    <?php endif; ?>
+                                    <td class="d-none d-md-table-cell">
+                                        <?php echo (int) $item->id; ?>
                                     </td>
                                 </tr>
-								<?php
-								$i++;
-							endforeach;
-						else                    :
-							?>
-                            <tr>
-                                <td colspan="10">
-                                    <div class="card card-block bg-faded p-2 center filter-state">
-											<span><?php echo Text::_('COM_KUNENA_FILTERACTIVE'); ?>
-												<?php
-												if ($this->filter->Active)
-													:
-													?>
-                                                    <button class="btn btn-outline-primary" type="button"
-                                                            onclick="document.getElements('.filter').set('value', '');this.form.submit();"><?php echo Text::_('COM_KUNENA_FIELD_LABEL_FILTERCLEAR'); ?></button>
-												<?php else
-													:
-													?>
-                                                    <button class="btn btn-outline-success" type="button"
-                                                            onclick="Joomla.submitbutton('add');"><?php echo Text::_('COM_KUNENA_NEW_CATEGORY'); ?></button>
-												<?php endif; ?>
-											</span>
-                                    </div>
-                                </td>
-                            </tr>
-						<?php endif; ?>
+                            <?php endforeach; ?>
                         </tbody>
                     </table>
-                </form>
-                <div class="clearfix"></div>
+
+                    <?php // load the pagination. ?>
+                    <?php echo $this->pagination->getListFooter(); ?>
+
+                    <?php // Load the batch processing form. ?>
+                    <?php if (
+                    $user->authorise('core.create', $extension)
+                        && $user->authorise('core.edit', $extension)
+                        && $user->authorise('core.edit.state', $extension)
+) : ?>
+                        <?php echo HTMLHelper::_(
+                            'bootstrap.renderModal',
+                            'collapseModal',
+                            array(
+                                'title'  => Text::_('COM_CATEGORIES_BATCH_OPTIONS'),
+                                'footer' => $this->loadTemplate('batch_footer'),
+                            ),
+                            $this->loadTemplate('batch_body')
+                        ); ?>
+                    <?php endif; ?>
+                <?php endif; ?>
+
+                <input type="hidden" name="extension" value="<?php echo $extension; ?>">
+                <input type="hidden" name="task" value="">
+                <input type="hidden" name="boxchecked" value="0">
+                <?php echo HTMLHelper::_('form.token'); ?>
             </div>
         </div>
     </div>
-    <div class="pull-right small">
-		<?php echo KunenaVersion::getLongVersionHTML(); ?>
-    </div>
-</div>
+</form>

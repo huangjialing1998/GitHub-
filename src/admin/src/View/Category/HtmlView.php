@@ -65,7 +65,7 @@ class HtmlView extends BaseHtmlView
 	 */
 	public function displayEdit()
 	{
-		$this->category = $this->get('AdminCategory');
+		$this->category = $this->get('Items');
 
 		// FIXME: better access control and gracefully handle no rights
 		// Prevent fatal error if no rights:

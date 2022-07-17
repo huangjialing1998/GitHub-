@@ -64,6 +64,45 @@ class CategoryController extends KunenaController
 		$this->baseurl         = 'administrator/index.php?option=com_kunena&view=categories';
 		$this->basecategoryurl = 'administrator/index.php?option=com_kunena&view=category';
 	}
+	
+	/**
+	 * Edit
+	 *
+	 * @param   null  $key     key
+	 * @param   null  $urlVar  url var
+	 *
+	 * @return  void
+	 *
+	 * @throws  Exception
+	 * @since   Kunena 2.0.0-BETA2
+	 */
+	public function edit($key = null, $urlVar = null)
+	{
+	    KunenaFactory::loadLanguage('com_kunena', 'admin');
+
+	    if (!Session::checkToken('post'))
+	    {
+	        $this->app->enqueueMessage(Text::_('COM_KUNENA_ERROR_TOKEN'), 'error');
+	        $this->setRedirect(KunenaRoute::_($this->baseurl, false));
+	        
+	        return;
+	    }
+	    
+	    $cid = $this->input->get('cid', [], 'array');
+	    $cid = ArrayHelper::toInteger($cid);
+	    
+	    $id = array_shift($cid);
+	    
+	    if (!$id)
+	    {
+	        $this->app->enqueueMessage(Text::_('COM_KUNENA_A_NO_CATEGORIES_SELECTED'), 'notice');
+	        $this->setRedirect(KunenaRoute::_($this->baseurl, false));
+	        
+	        return;
+	    }
+
+	    $this->setRedirect(KunenaRoute::_("administrator/index.php?option=com_kunena&view=category&layout=edit&catid={$id}", false));
+	}
 
 	/**
 	 * Save changes on the category
